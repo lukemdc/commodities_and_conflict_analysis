@@ -112,9 +112,9 @@ for (y in yrs){
 data<-unique(data, incomparables = FALSE)
 write.csv(data,file="UNCOMTRADE_tradevalues_fullset.csv")
 
-#then filter and throw out entries for  countries exluded from analysis like small islands
+#then filter and throw out entries for uninteresting countries 
 #to narrow down to countries actually in the analysis
-#these are countries inlcuded in the analysis:
+#these are interesting countries:
 countries<-list("4","8","12","24","32","51","36","40","31","50","112","56","204","64","68",
                 "70","72","76","96","100","854","108","116","120","124","140","148",
                 "152","156","170","180","178","188","384","191","196","203","200",
@@ -144,9 +144,8 @@ data3 <- subset(data2, select=c(Year,Reporter.Code,Reporter.ISO,Reporter,
 #data3<-read.csv("UNCOMTRADE_subset_keyvars.csv")
 write.csv(data3,file="UNCOMTRADE_subset_keyvars.csv")
 
-
 #transform to wide form with years wideners
-#z-stats from long-form now or turn into format that I can manipulate in excel
+#tradedata from long-form now or turn into format that I can manipulate in excel
 data3$value<-data3$Trade.Value..US..
 data3$variable<-data3$Year
 data4<-dcast(data3, Reporter.Code+Reporter.ISO+Reporter+Trade.Flow.Code+Trade.Flow+Commodity.Code+Commodity ~ variable, id=1:6)
@@ -203,20 +202,20 @@ zstats<<-lapply(list("03","05","07","10"),function(i){
 zstats[[4]]$"zstat_10_Export_2709"<-NA
 x<-grep("zstat_10_Export_2710", colnames(zstats[[4]]))
 zstats[[4]]<-cbind(zstats[[4]][1:(x-1)],
-                   zstats[[4]][ncol(zstats[[4]])],
-                   zstats[[4]][(x:(ncol(zstats[[4]])-1))])
+           zstats[[4]][ncol(zstats[[4]])],
+           zstats[[4]][(x:(ncol(zstats[[4]])-1))])
 
 #this next Reduce would merge them all together without duplicates
 #zstats <- Reduce(function(...) merge(..., all=T), zstats)
 write.csv(Reduce(function(...) merge(..., all=T), zstats),"UNCOMTRADE_justzstats.csv")
 tradevalues<-melt_it(data4,"tradevalueUSD")
-
-data5<-tradevalues[,1:3]
 #remove(data3,data4)
 
 
+
+
 ##Start adding covariates
-data6<-data5
+data6<-tradevalues[,1:3]
 #add PRIO codes
 prio<-read.csv("PRIO_to_Comtrade_codes.csv")
 data6<-merge(data6,prio,by="Reporter.Code")
@@ -286,191 +285,94 @@ data6<-merge(data6,terror,id=c("Year","PRIO.Code"),all.x = TRUE)
 data6$"terrorbomb_deaths"[is.na(data6$"terrorbomb_deaths")] <- 0
 
 write.csv(data6,file="UNCOMTRADE_controls.csv")
-remove(polity,proj,terror,conflicts,gdp,pop,prio)
+remove(polity,proj,terror,conflicts,pop,prio)
 
+####
 
-print ("all done")
+#now calculate percent GDP for all of the tradevalue flows
+data5<<-tradevalues[,1:3]
+data5<-merge(data5,wb_to_iso,all.x = TRUE)
+data5<-merge(data5,gdp,all.x = TRUE)
+data5<-merge(data5,tradevalues,all.x = TRUE)
+cols<-colnames(data5[,6:length(colnames(data5))])
 
-
-'''
-junk code scratch space
-
-cols<<-colnames(zstats)
-cols<-cols[4:length(cols)]
-t<-list()
-for (i in seq_along(cols)) {
-  #make sure that the columns line up correctly 
-  t[[i]] <- data.frame(zstats[,1:3],zstats[,cols[i]])
-  names(t[[i]])[4]<-make.names(cols[i])
-}
-
-
-t[[1]][4]
-if (grepl("Export",colnames(t[[1]][4]))){
-  print("yes")
-  
-  add to exports
-}else{
-  
-  add to imports
-}
-
-#rearrange columns
-data5<-data5[,c(2,(ncol(data5)-2):ncol(data5),1,3:(ncol(data5)-3))]
-write.csv(data5,file="UNCOMTRADE_subset_zstats_transformed.csv")
-
-
-##Mechanism 1: Value Import/Export shock interacting with %GDP
-##Mechanism 2: Price Shock interacting with %GDP
-#might need to create data for the second mechanism, which is a simpler regression:
-#that has as key IV interaction between %GDP and price shock
-
-t<-list()
-lapply(list("3","5","7","10"),function(i){  #,"5","7","10"
-  for (flow in list("Export","Import")){  #Import
-    for (col in cols){
-      if (grepl(flow,col) && ((substring(col,nchar(col)-1)==i) || (substring(col,nchar(col))==i))){
-        print("yes")
-        print(col)
-        t<-list(t,assign(paste(col,sep="_"),data.frame(zstats[col]),envir = .GlobalEnv))
-        
-      }
-    }
-  }
-}) 
-
-#this might take an lapply to the list of zstat num years
 for (i in cols){
-  print(i)
-  flow<-substr(i,8,13)
-  comcode<-substr(i,15,nchar(i))
-  data7[paste("zstat","03",flow,comcode,sep="_")]<-data7[i] * data7[paste("zstat","03",flow,comcode,sep="_")]
-  names(data7)[names(data7)==paste("zstat","03",flow,comcode,sep="_")] <- paste("w_zstat","03",flow,comcode,sep="_")
-  #check to make sure there are some negative numbers in zstats that they imported correctly  
+  data5[i]  <- data5[i] / data5["gdp_2005usd"]
+  #replaces with new column title
+  names(data5)[names(data5)==i] <- paste("pctGDP_",substr(i,15,nchar(i)),sep="")
 }
 
-Multiply by the tradevalues
-make sure in same units(
-  then sum rowsum.data.frame()
-  
-  merge to data5
-  loop through columns, dividing columns in loop by gdp column
-  
-  data5<-merge(data5,wb_to_iso)
-  data5<-merge(data5,gdp)
-  
-  for (x in a[2:3]){
-  print(x)
-  print("_")
-  }
-  
-  rowsum(x, group, reorder = FALSE, na.rm = FALSE)
-  
-  cols<<-colnames(zstats)
-  cols<-cols[4:length(cols)]
-  t<-list()
-  for (i in seq_along(cols)) {
-  #make sure that the columns line up correctly 
-  t[[i]] <- data.frame(zstats[,1:3],zstats[,cols[i]])
-  names(t[[i]])[4]<-make.names(cols[i])
-  }
-  
-  t[[1]][4]
-  if (grepl("Export",colnames(t[[1]][4]))){
-  print("yes")
-  #add to exports
-  }else{
-  
-  #add to imports
-  }
-  
-  
-  #filter by years
-  (substring(col,nchar(col)-1)==i) || (substring(col,nchar(col))==i))
-  
-  
-  #try this
-  as list, reorder zstats columns so that they are grouped
-  separate by import/export
-  sort by 
-  
-  
-  copy old zstats
-  then rebuild new zstats df with the order list
+#print the percent GDP into its own file for creating pie charts after stata analysis
+write.csv(data5,file="UNCOMTRADE_pct_gdp.csv")
 
-  
-  View(t[1])
-  
- 
-  
-  if ((substring(col,nchar(col)-1)=="23")&&("a"=="a")) {
-  print("yes")
-  }else{
-  print("no")
+cols<<-colnames(data5[,6:length(colnames(data5))])
+#now use data5 to weight the zstats
+#loop over the pctGDP then grab the zstat column based on the import/export
+x<<-list("03",'05','07','10')
+ls<-lapply(list(1,2,3,4),function(z){
+  data7<-merge(data5,zstats[[z]],all.x = TRUE)
+  for (i in cols){
+    #this uses colnam to determine trade flow
+    flow<-substr(i,8,13)
+    comcode<-substr(i,15,nchar(i))
+    data7[paste("zstat",x[z],flow,comcode,sep="_")]<-data7[i] * data7[paste("zstat",x[z],flow,comcode,sep="_")]
+    names(data7)[names(data7)==paste("zstat",x[z],flow,comcode,sep="_")] <- paste("w_zstat",x[z],flow,comcode,sep="_")
+    #check to make sure there are some negative numbers in zstats that they imported correctly  
   }
+  return(data7)
+})
 
-  read tradevalueUSD from csv
-  append prio code, gw gdp data
-  generate df with percent GDP matrix for each year
-  - do for exports and imports
-  multiply percent gdp by the zstat
-  sum all zstats*%GDP for a year to get a single IV for each country-year
-  append selected data for certain resources, oil, minerals, diamondes, steel, etc, maybe agricultural products Too
-  then return to appending more covariates
-  
-  for col in columns{
-    
-    building new df
-    if column says "import or exprot" & zstat_ desired year{
-      add to building df
-      
-    }
-    merge building df with main set with gdp
-    sum across the columns
-    delete all but the IV columns
-    return conslidated data with IV for merge into master file
-    
+
+final_data<-data6
+for (flow in list("Export","Import")){
+  for (z in list(1,2,3,4)){
+    #find starting and stopping indexes, in between which the rows are summed
+    st<-grep(paste("w_zstat",x[z],flow,"01",sep="_"),colnames(ls[[z]]))
+    sp<-grep(paste("w_zstat",x[z],flow,"99",sep="_"),colnames(ls[[z]]))
+    ls[[z]]$z_index<-rowSums(ls[[z]][,st:sp],na.rm=TRUE)
+    #this adds NAs if the row has no data
+    ls[[z]][,"z_index"][ls[[z]][,"z_index"] == 0] <- NA
+    names(ls[[z]])[names(ls[[z]])=="z_index"] <- paste("z_index",x[z],flow,sep="_")
+    #might need to normalize z_index because commodity prices are always decreasing
+    #but the probability of conflict is always decreasing too, so maybe a positive bias for the Hypothesis
+    #clean up dataframes by removing pct_gdp and zstats
+    #View(ls[[z]][paste("z_index",x[z],sep="_")])
+    tomerge<-cbind(ls[[z]][1:5],ls[[z]][paste("z_index",x[z],flow,sep="_")])
+    final_data<-merge(final_data,tomerge,all.x = TRUE)
   }
-  
-  
-  
-  to weight by gdp percent
-  c<-matrix(b*b[,"gdp"],nrow(b))
-  
-  
-  #CHECK indexes here, given the trade values from data4
-  
-  #rearrange columns
-  data5<-data5[,c(2,(ncol(data5)-2):ncol(data5),1,3:(ncol(data5)-3))]
-  write.csv(data5,file="UNCOMTRADE_subset_zstats_transformed.csv")
-  
-  
-  #maybe add COW data instead of prio. COW can add discrete incidence variables for 
-  #inter,extra,and intra state wars
-  
-  
-  #also add terrorist incident data as another DV
-  
-  
-  ##Mechanism 1: Value Import/Export shock interacting with %GDP
-  ##Mechanism 2: Price Shock interacting with %GDP
-  #might need to create data for the second mechanism, which is a simpler regression:
-  #that has as key IV interaction between %GDP and price shock
-  
-  
-  
-  
-  t<-list()
-  lapply(list("3","5","7","10"),function(i){  #,"5","7","10"
-    for (flow in list("Export","Import")){  #Import
-      for (col in cols){
-        if (grepl(flow,col) && ((substring(col,nchar(col)-1)==i) || (substring(col,nchar(col))==i))){
-          print("yes")
-          print(col)
-          t<-list(t,assign(paste(col,sep="_"),data.frame(zstats[col]),envir = .GlobalEnv))
-          
-        }
-      }
-    }
-  }) 
-  '''
+}
+#now data7 will have all pct CDP and weighted zstats
+data7<-Reduce(function(...) merge(..., all=T), data7)
+
+
+#add the final dependent variables from governance indicators
+polstab<-read.csv("wb_polstab.csv")
+ruleoflaw<-read.csv("wb_ruleoflaw.csv")
+for (y in 1996:2014){
+  names(polstab)[names(polstab) == paste("X",toString(y),sep="")] <- toString(y)
+  names(ruleoflaw)[names(ruleoflaw) == paste("X",toString(y),sep="")] <- toString(y)
+}
+
+polstab<-melt(polstab,id=1)
+names(polstab)[names(polstab) == "variable"] <- "Year"
+names(polstab)[names(polstab) == "value"] <- "polstab"
+
+ruleoflaw<-melt(ruleoflaw,id=1)
+names(ruleoflaw)[names(ruleoflaw) == "variable"] <- "Year"
+names(ruleoflaw)[names(ruleoflaw) == "value"] <- "ruleoflaw"
+
+###merge wb data to whole dataset
+final_data<-merge(final_data,polstab,all.x = TRUE)
+final_data<-merge(final_data,ruleoflaw,all.x = TRUE)
+
+remove(polstab,ruleoflaw,gdp,tomerge,tradevalues,wb,wb_to_iso,cols,comcode,flow,i,ls,sp,st,x,z)
+
+write.csv(final_data,"maier_thesis_UNCOMTRADE_full.csv")
+
+write.csv(merge(final_data,zstats[[1]],all.x=TRUE),"maier_thesis_UNCOMTRADE_zstats.csv")
+write.csv(merge(final_data,Reduce(function(...) merge(..., all=T), zstats),all.x=TRUE), "maier_thesis_UNCOMTRADE_allzstats.csv")
+
+
+
+
+
